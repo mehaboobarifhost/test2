@@ -71,6 +71,7 @@ public class Record {
 Here is how you would write a test for this new method.
 
 record.feature (Example Gherkin)
+```gherkin
 Feature: Aprimo Record Management
 
   Scenario: Retrieve a specific record by ID
@@ -78,3 +79,4 @@ Feature: Aprimo Record Management
     When I request the record with ID "a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890"
     Then the API response status should be 200
     And the response should contain a record with title "My_Asset_Title"
+```
