@@ -1,4 +1,5 @@
 # Client API
+```java
 /**
      * Gets a specific record from Aprimo DAM.
      * @param recordId The ID (GUID) of the record to retrieve.
@@ -18,10 +19,10 @@
 
         return response;
     }
-
+```
 # Data Model Layer (New POJO: Record.java)
 package com.mycompany.framework.models;
-
+```java
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -65,7 +66,7 @@ public class Record {
         this.fileName = fileName;
     }
 }
-
+```
 
 # BDD Layer (Gherkin & Step Definitions)
 Here is how you would write a test for this new method.
