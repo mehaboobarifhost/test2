@@ -81,3 +81,50 @@ Feature: Aprimo Record Management
     Then the API response status should be 200
     And the response should contain a record with title "My_Asset_Title"
 ```
+
+
+# Step Definitions
+```java
+package com.mycompany.framework.steps;
+
+import com.mycompany.framework.api.AprimoApiClient;
+import com.mycompany.framework.models.Record; // Import your new POJO
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+import io.restassured.response.Response;
+import static org.junit.Assert.assertEquals;
+
+public class RecordStepDefinitions {
+
+    private AprimoApiClient apiClient;
+    private Response response;
+    private Record record; // To store the deserialized response
+
+    @Given("I am an authenticated user with API access")
+    public void i_am_authenticated() {
+        apiClient = new AprimoApiClient();
+    }
+
+    @When("I request the record with ID {string}")
+    public void i_request_record_by_id(String recordId) {
+        // This is the new method you just added
+        response = apiClient.getRecordById(recordId);
+    }
+
+    @Then("the API response status should be {int}")
+    public void the_api_response_status_should_be(int expectedStatusCode) {
+        assertEquals(expectedStatusCode, response.getStatusCode());
+    }
+
+    @Then("the response should contain a record with title {string}")
+    public void the_response_should_contain_record_title(String expectedTitle) {
+        // Automatically convert the JSON response to your Record object
+        record = response.as(Record.class);
+        
+        // Assertions are now clean and type-safe
+        assertEquals(expectedTitle, record.getTitle());
+    }
+}
+
+```
