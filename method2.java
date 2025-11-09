@@ -33,13 +33,13 @@ import java.util.regex.Pattern;
  * This class is stateful and must be instantiated for each login session.
  *
  * @author Your Name
- * @version 2.0.0
+ * @version 3.0.0
  */
 public class AprimoLogin {
 
     // --- Class Members ---
     private final String username;
-    private final String password;
+    private final String password; // This is the USER'S REAL PASSWORD (for UI flow)
     private final ProxyConfig proxyConfig;
 
     private CookieManager cookieManager;
@@ -53,7 +53,8 @@ public class AprimoLogin {
     private static final String TOKEN_PATH = "/login/connect/token";
     private static final String CLIENT_ID = "MarketingOps";
     private static final String REDIRECT_URI = "https://company-sb1.aprimo.com/MarketingOps/oidc/signin-callback.html";
-    private static final String SCOPE = "api ui openid api-internal legacy-api filestore-access";
+    private static final String SCOPE_UI = "api ui openid api-internal legacy-api filestore-access";
+    private static final String SCOPE_API = "api"; // From new documentation
 
     /**
      * Simple configuration class for proxy settings.
@@ -64,13 +65,6 @@ public class AprimoLogin {
         final String username;
         final String password;
 
-        /**
-         * Creates a new ProxyConfig.
-         * @param host Proxy host (e.g., "webproxy.yourcompany.com")
-         * @param port Proxy port (e.g., 8080)
-         * @param username Proxy username (or null if not needed)
-         * @param password Proxy password (or null if not needed)
-         */
         public ProxyConfig(String host, int port, String username, String password) {
             this.host = host;
             this.port = port;
@@ -83,7 +77,7 @@ public class AprimoLogin {
      * Constructor for a standard login.
      *
      * @param username The user's username.
-     * @param password The user's password.
+     * @param password The user's REAL login password (for UI flow).
      */
     public AprimoLogin(String username, String password) {
         this(username, password, null);
@@ -93,7 +87,7 @@ public class AprimoLogin {
      * Constructor for a login that requires a proxy.
      *
      * @param username The user's username.
-     * @param password The user's password.
+     * @param password The user's REAL login password (for UI flow).
      * @param proxyConfig A ProxyConfig object with proxy details.
      */
     public AprimoLogin(String username, String password, ProxyConfig proxyConfig) {
@@ -107,7 +101,7 @@ public class AprimoLogin {
     /**
      * [FOR UI TESTS]
      * Performs the brittle, multi-step "screen scrape" (Authorization Code) flow
-     * to acquire the SESSION COOKIES and the final callback URL.
+     * using the user's REAL PASSWORD to acquire the SESSION COOKIES.
      * This is the only way to get cookies for a Selenium UI test.
      *
      * @return The final callback URL with the authorization code.
@@ -131,7 +125,7 @@ public class AprimoLogin {
                 .addQueryParameter("client_id", CLIENT_ID)
                 .addQueryParameter("redirect_uri", REDIRECT_URI)
                 .addQueryParameter("response_type", "code")
-                .addQueryParameter("scope", SCOPE) // Use same scope
+                .addQueryParameter("scope", SCOPE_UI) // Use broad scope for UI
                 .addQueryParameter("state", this.state)
                 .addQueryParameter("code_challenge", codeChallenge)
                 .addQueryParameter("code_challenge_method", "S256")
@@ -167,6 +161,7 @@ public class AprimoLogin {
         for (Element input : loginForm.select("input[type=hidden]")) {
             formBuilder.add(input.attr("name"), input.attr("value"));
         }
+        // UI Flow uses the REAL password
         formBuilder.add("Username", this.username);
         formBuilder.add("Password", this.password);
         formBuilder.add("loginButton", "login");
@@ -205,26 +200,27 @@ public class AprimoLogin {
     }
 
     /**
-     * [FOR API TESTS]
+     * [FOR API TESTS] - REFACTORED
      * Performs the stable, single-call "Resource Owner Password" (ROP) flow
-     * to directly exchange user credentials for an API Access Token.
-     * This is the recommended method for API tests.
+     * as defined in the Aprimo documentation.
      *
+     * @param userToken The user's unique "User Token" (from My Profile), NOT their password.
+     * @param clientSecret The Client Secret for your registered application.
      * @return The API Access Token (Bearer Token).
      * @throws Exception if the token exchange fails.
      */
-    public String getApiAccessToken() throws Exception {
+    public String getApiAccessToken(String userToken, String clientSecret) throws Exception {
 
         System.out.println("(API Flow) Step 1: Building ROP token request...");
         
-        // This is the new, simple request body
+        // This is the new, correct request body based on the documentation
         FormBody tokenRequestBody = new FormBody.Builder()
                 .add("grant_type", "password")
                 .add("username", this.username)
-                .add("password", this.password)
+                .add("password", userToken) // <-- THIS IS THE USER TOKEN
+                .add("scope", SCOPE_API)
                 .add("client_id", CLIENT_ID)
-                .add("scope", SCOPE)
-                // Note: No client_secret is provided in this attempt.
+                .add("client_secret", clientSecret) // <-- THIS IS THE CLIENT SECRET
                 .build();
 
         Request tokenRequest = new Request.Builder()
@@ -339,7 +335,7 @@ public class AprimoLogin {
             final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
 
             OkHttpClient.Builder builder = new OkHttpClient.Builder();
-            builder.sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCpts[0]);
+            builder.sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0]);
             builder.hostnameVerifier((hostname, session) -> true);
             return builder;
         } catch (Exception e) {
@@ -399,11 +395,17 @@ public class AprimoLogin {
     public static void main(String[] args) {
         // --- !! UPDATE THESE !! ---
         final String TEST_USERNAME = "arif_ao";
-        final String TEST_PASSWORD = "testing@12345";
-        // --- !! UPDATE THESE !! ---
+        final String TEST_PASSWORD_FOR_UI = "testing@12345"; // REAL password, not used here
+        
+        // --- !! NEW !! ---
+        // You must get these from your Aprimo admin / user profile
+        final String TEST_USER_TOKEN = "your-aprimo-user-token-here"; 
+        final String CLIENT_SECRET = "your-client-secret-here";
+        // --- !! END NEW !! ---
 
-        if (TEST_USERNAME.equals("your-test-username")) {
-            System.err.println("Please update TEST_USERNAME and TEST_PASSWORD in the main() method.");
+
+        if (TEST_USER_TOKEN.equals("your-aprimo-user-token-here")) {
+            System.err.println("Please update TEST_USER_TOKEN and CLIENT_SECRET in the main() method.");
             return;
         }
         
@@ -418,15 +420,17 @@ public class AprimoLogin {
         AprimoLogin.ProxyConfig proxyConfig = new AprimoLogin.ProxyConfig(
                 PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS
         );
-        AprimoLogin loginSession = new AprimoLogin(TEST_USERNAME, TEST_PASSWORD, proxyConfig);
+        AprimoLogin loginSession = new AprimoLogin(TEST_USERNAME, TEST_PASSWORD_FOR_UI, proxyConfig);
         */
         
         // Standard (no proxy) test
-        AprimoLogin loginSession = new AprimoLogin(TEST_USERNAME, TEST_PASSWORD, null);
+        AprimoLogin loginSession = new AprimoLogin(TEST_USERNAME, TEST_PASSWORD_FOR_UI, null);
 
         try {
             System.out.println("--- Testing new getApiAccessToken() (ROP) flow ---");
-            String accessToken = loginSession.getApiAccessToken();
+            // Call the new, refactored method
+            String accessToken = loginSession.getApiAccessToken(TEST_USER_TOKEN, CLIENT_SECRET);
+            
             System.out.println("\n--- API ACCESS TOKEN ---");
             System.out.println(accessToken);
             System.out.println("\n--- ROP FLOW SUCCESS ---");
