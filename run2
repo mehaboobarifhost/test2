@@ -1,0 +1,71 @@
+pipeline {
+    agent any
+
+    // Flag to track if we need to run the retry stage
+    environment {
+        TESTS_FAILED = 'false'
+    }
+
+    stages {
+        stage('Build & Test') {
+            steps {
+                script {
+                    try {
+                        // 1. Run the initial build and test.
+                        //    This command (e.g., 'mvn test') is what
+                        //    generates 'target/rerun.txt' on failure.
+                        sh "mvn clean test"
+
+                    } catch (Exception e) {
+                        
+                        // 2. TESTS FAILED!
+                        //    First, check if the rerun file was actually created
+                        //    (it might fail for other reasons, like compilation).
+                        if (fileExists('target/rerun.txt')) {
+                            echo "Tests failed. Stashing target/rerun.txt"
+                            
+                            // 3. Mark the flag so the retry stage will run
+                            env.TESTS_FAILED = 'true'
+                        
+                            // 4. IMPORTANT: Save the 'rerun.txt' file
+                            stash name: 'rerun-file', includes: 'target/rerun.txt'
+                        } else {
+                            echo "Build failed, but no rerun.txt was found. Skipping retry."
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Retry Failed Tests') {
+            // 5. This stage ONLY runs if the TEST_FAILED flag was set
+            when {
+                expression { env.TESTS_FAILED == 'true' }
+            }
+            steps {
+                script {
+                    echo "Tests failed on the first run. Retrying from rerun.txt..."
+                    
+                    // 6. Bring the saved 'rerun.txt' back into the workspace
+                    unstash 'rerun-file'
+
+                    // 7. Run the retry command.
+                    //    !!! NOTICE: DO NOT use 'mvn clean' here !!!
+                    //    The '@target/rerun.txt' tells Maven to read that
+                    //    file and run only the tests listed inside.
+                    sh "mvn test @target/rerun.txt" 
+                }
+            }
+        }
+    }
+    
+    post {
+        // 8. CLEANUP
+        //    This runs at the VERY end, after the retry
+        //    stage has already finished.
+        always {
+            echo "Build finished. Cleaning workspace."
+            cleanWs()
+        }
+    }
+}
