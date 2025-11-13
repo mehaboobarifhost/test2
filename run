@@ -1,1 +1,67 @@
-b1ba64eda8484766bb5babd1014e9e89
+import io.restassured.http.ContentType;
+import java.util.List;
+import java.util.Map;
+import static io.restassured.RestAssured.given;
+
+public class FindClassificationFlexible {
+
+    // --- START: CONFIGURATION ---
+    private static final String TENANT_NAME = "your-tenant-name";
+    private static final String ACCESS_TOKEN = "your-bearer-access-token";
+    
+    // The name of the folder you are looking for
+    private static final String SEARCH_TERM = "Promotional"; 
+    // --- END: CONFIGURATION ---
+
+    public static void main(String[] args) {
+        
+        String searchUrl = String.format("https://%s.dam.aprimo.com/api/core/search/classifications", TENANT_NAME);
+
+        // A more flexible search query:
+        // Search for 'Promotional' in EITHER the 'Label' OR 'Name' field.
+        String searchQuery = String.format("Label CONTAINS '%s' OR Name CONTAINS '%s'", 
+                                            SEARCH_TERM, SEARCH_TERM);
+
+        Map<String, Object> jsonPayload = Map.of(
+            "searchExpression", Map.of("expression", searchQuery),
+            "pageSize", 20 // Get up to 20 matches
+        );
+
+        System.out.println("Searching for classifications where: " + searchQuery);
+
+        try {
+            // Extract the entire "items" list from the JSON response
+            List<Map<String, Object>> items = given()
+                .header("Authorization", "Bearer " + ACCESS_TOKEN)
+                .header("API-VERSION", "1")
+                .contentType(ContentType.JSON)
+                .body(jsonPayload)
+            .when()
+                .post(searchUrl)
+            .then()
+                .statusCode(200)
+                .log().ifError()
+                .extract()
+                .path("items"); // Get the whole list of items
+
+            if (items.isEmpty()) {
+                System.out.println("Error: No classifications found matching that term.");
+            } else {
+                System.out.println("SUCCESS! Found " + items.size() + " matching classification(s):");
+                System.out.println("---");
+                
+                // Loop through all found items and print their details
+                for (Map<String, Object> item : items) {
+                    System.out.println(item.toString());
+                    // This will print something like:
+                    // {id=a1b2c3d4-...., label=Promotional, name=Promotional, ...}
+                }
+                System.out.println("---");
+                System.out.println("Find the classification you want and copy its 'id' value.");
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error during search: " + e.getMessage());
+        }
+    }
+}
